@@ -1,0 +1,21 @@
+{
+  "name": "tassoufra",
+  "version": "1.0.0",
+  "description": "Tassoufra manages passwords, bookmarks, todos...",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "knex": "knex",
+    "test": "jest"
+  },
+  "author": "Abderrahmane Ismail",
+  "license": "ISC",
+  "dependencies": {
+    "electron": "^9.2.0",
+    "knex": "^0.21.4",
+    "sqlite3": "^5.0.0"
+  },
+  "devDependencies": {
+    "jest": "^26.4.0"
+  }
+}
