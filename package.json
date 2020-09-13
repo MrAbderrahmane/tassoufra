@@ -4,7 +4,8 @@
   "description": "Tassoufra manages passwords, bookmarks, todos...",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "test": "jest"
   },
   "author": "Abderrahmane Ismail",
   "license": "ISC",

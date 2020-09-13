@@ -1,6 +1,7 @@
 const { BrowserWindow, app, ipcMain, Notification } = require("electron");
 
-const knexHelper = require("./knexhelper");
+const knexHelper = require("./utils/knexhelper");
+const encryptoHelper = require("./utils/cryptohelper")
 
 let mainWindow, addPasswordWindow;
 
@@ -71,6 +72,11 @@ ipcMain.on("show-add-password-dialog", () => {
 ipcMain.on("save-password", (e, args) => {
   // console.log('saving password');
   const obj = { website: args.website, hashedpassword: args.password };
+  try{
+    obj.hashedpassword = encryptoHelper.encrypt(obj.hashedpassword);
+  } catch(e) {
+    console.error(e);
+  }
   knexHelper
     .savePasswords({ ...obj })
     .then((res) => {
@@ -121,3 +127,17 @@ ipcMain.on("show-notification", (e, args) => {
     icon: "./assets/images/icon.png",
   }).show();
 });
+
+ipcMain.on('show-password', (e, args) => {
+  console.log(args);
+  let p;
+  try{
+   p = encryptoHelper.decrypt(args);
+  } catch(e) {
+    p = null;
+  }
+  e.sender.send('showed-password',{
+    result: p? 1:0,
+    args: p? p:'Decryption error!!!'
+  });
+})
