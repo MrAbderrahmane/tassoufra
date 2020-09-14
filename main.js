@@ -1,11 +1,13 @@
-const { BrowserWindow, app, ipcMain, Notification } = require("electron");
+const { BrowserWindow, app, ipcMain, Notification, clipboard } = require("electron");
 
 const knexHelper = require("./utils/knexhelper");
-const encryptoHelper = require("./utils/cryptohelper")
+const encryptoHelper = require("./utils/cryptohelper");
+const cryptohelper = require("./utils/cryptohelper");
 
-let mainWindow, addPasswordWindow;
+let mainWindow, addPasswordWindow, masterPasswordWindow;
 
 function createWindow() {
+  // main window
   mainWindow = new BrowserWindow({
     show: false,
     webPreferences: {
@@ -19,6 +21,7 @@ function createWindow() {
   });
   mainWindow.webContents.openDevTools();
 
+  // add password window
   addPasswordWindow = new BrowserWindow({
     width: 400,
     height: 400,
@@ -32,7 +35,26 @@ function createWindow() {
   });
 
   addPasswordWindow.loadFile("./src/passwords/addpassword.html");
+  // addPasswordWindow.on('close', ()=>{masterPasswordWindow = null});
   addPasswordWindow.webContents.openDevTools();
+
+  // master password window
+  masterPasswordWindow = new BrowserWindow({
+    width: 400,
+    height: 400,
+    show: false,
+    parent: mainWindow,
+    modal: true,
+    frame: false,
+    webPreferences: {
+      nodeIntegration: true,
+      
+    },
+  });
+
+  masterPasswordWindow.loadFile("./src/masterpasswords/masterpassword.html");
+  // masterPasswordWindow.on('close', ()=>{masterPasswordWindow = null});
+  masterPasswordWindow.webContents.openDevTools();
 }
 
 app.whenReady().then(createWindow);
@@ -71,11 +93,13 @@ ipcMain.on("show-add-password-dialog", () => {
 
 ipcMain.on("save-password", (e, args) => {
   // console.log('saving password');
-  const obj = { website: args.website, hashedpassword: args.password };
+  const obj = { website: args.website,username:args.username };
   try{
-    obj.hashedpassword = encryptoHelper.encrypt(obj.hashedpassword);
-  } catch(e) {
-    console.error(e);
+    obj.hashedpassword = encryptoHelper.encrypt(args.password);
+  } catch(err) {
+    console.error(err);
+    mainWindow.webContents.send('save-password-result',{result:0,args:'Error encription'})
+    return 
   }
   knexHelper
     .savePasswords({ ...obj })
@@ -91,6 +115,7 @@ ipcMain.on("save-password", (e, args) => {
       });
     })
     .catch((err) => {
+      console.log(err)
       mainWindow.webContents.send("save-password-result", {
         result: 0,
         args: "Can not save data!!!",
@@ -140,4 +165,40 @@ ipcMain.on('show-password', (e, args) => {
     result: p? 1:0,
     args: p? p:'Decryption error!!!'
   });
+})
+
+ipcMain.on('copy-to-clipboard', (e, args) => {
+  clipboard.writeText(args);
+});
+
+ipcMain.on('show-master-password-dialog', (e, args) => {
+  if(!encryptoHelper.getEncryptionPassword()){
+    masterPasswordWindow.show()
+  }
+});
+
+ipcMain.on('check-master-password', (e, password) => {
+  knexHelper.getFirstPassword().then(res => {
+    if(res.length > 0){
+      try {
+        encryptoHelper.setEncryptionPassword(encryptoHelper.hash(password))
+        cryptohelper.decrypt(res[0].hashedpassword);
+        masterPasswordWindow.hide();
+        mainWindow.webContents.send('master-password-set')
+  
+      } catch (error) {
+        e.sender.send('wrong-master-password');
+        // masterPasswordWindow.webContents.send('wrong-master-password')
+        console.log(error);
+      }
+    } else {
+      encryptoHelper.setEncryptionPassword(encryptoHelper.hash(password));
+      masterPasswordWindow.hide();
+      mainWindow.webContents.send('master-password-set')
+    }
+  }).catch(err => {
+    e.sender.send('error',err);
+    // masterPasswordWindow.webContents.send('error',err);
+    console.log(error);
+  })
 })

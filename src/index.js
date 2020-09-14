@@ -6,8 +6,11 @@ let waitingForRawPassword = null;
 const showDuration = 5000;
 
 document.addEventListener("DOMContentLoaded", function () {
-  ipcRenderer.send("get-all-passwords");
+  ipcRenderer.send("show-master-password-dialog");
 });
+ipcRenderer.on("master-password-set",(e, args)=>{
+  ipcRenderer.send("get-all-passwords");
+})
 
 btnAdd.addEventListener("click", () => {
   ipcRenderer.send("show-add-password-dialog");
@@ -31,8 +34,10 @@ function renderPasswordsResult(args) {
     const tr = document.createElement("tr");
     const tdI = document.createElement("td");
     const tdW = document.createElement("td");
+    const tdU = document.createElement("td");
     const tdP = document.createElement("td");
     const bP = document.createElement("button");
+    const bPC = document.createElement("button");
     const tdB = document.createElement("td");
     const b = document.createElement("button");
     const icon = document.createElement("img");
@@ -41,11 +46,21 @@ function renderPasswordsResult(args) {
     bP.appendChild(icon);
     bP.setAttribute("onClick", "showPassword(this)");
 
+    const iconCopy = document.createElement("img");
+    iconCopy.src = "../assets/images/clipboard.svg";
+    iconCopy.style.width = "17px";
+
+    bPC.appendChild(iconCopy);
+    bPC.setAttribute("onClick", "copyPassword(this)");
+    bPC.style.display = "none";
+
     tdI.innerText = p.id;
     tdW.innerText = p.website;
+    tdU.innerText = p.username;
     tdP.innerText = passwordBullets;
     tdP.hashedpassword = p.hashedpassword;
     tdP.appendChild(bP);
+    tdP.appendChild(bPC);
     b.innerText = "Delete";
 
     b.setAttribute("onClick", "deleteRow(this)");
@@ -53,6 +68,7 @@ function renderPasswordsResult(args) {
 
     tr.appendChild(tdI);
     tr.appendChild(tdW);
+    tr.appendChild(tdU);
     tr.appendChild(tdP);
     tr.appendChild(tdB);
 
@@ -91,11 +107,22 @@ function showPassword(btn) {
     waitingForRawPassword = btn.parentNode;
   }
 }
+function copyPassword(btn){
+  for (let node of btn.parentNode.childNodes) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      if(!node.textContent.startsWith('\u2022')){
+        ipcRenderer.send('copy-to-clipboard', node.textContent)
+      }
+      break;
+    }
+  }
+}
 
 ipcRenderer.on("showed-password", (e, args) => {
   if (waitingForRawPassword && args && args.result === 1) {
-    const btn = waitingForRawPassword.querySelector("button");
+    const [btn,btnCopy] = waitingForRawPassword.querySelectorAll("button");
     btn && (btn.style.display = "none");
+    btnCopy && (btnCopy.style.display = "inline-block")
     for (let node of waitingForRawPassword.childNodes) {
       if (node.nodeType === Node.TEXT_NODE) {
         node.textContent = args.args;
@@ -108,6 +135,7 @@ ipcRenderer.on("showed-password", (e, args) => {
         if (node.nodeType === Node.TEXT_NODE) {
           node.textContent = passwordBullets;
           btn && (btn.style.display = "inline-block");
+          btnCopy && (btnCopy.style.display = "none")
           break;
         }
       }
