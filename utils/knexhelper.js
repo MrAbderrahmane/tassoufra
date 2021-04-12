@@ -1,3 +1,5 @@
+const Knex = require("knex");
+
 const knex = require("knex")({
   client: "sqlite3",
   connection: {
@@ -15,7 +17,17 @@ function savePasswords(obj) {
   console.log("savePasswords was called");
   obj.created_at = knex.fn.now();
   obj.updated_at = knex.fn.now();
-  return knex("passwords").insert(obj); // .returning('id');
+  return knex("passwords").insert(obj);
+}
+
+function updatePassword(obj) {
+  console.log("updatePasswords was called");
+  console.log(obj);
+  obj.updated_at = knex.fn.now();
+  const id = obj.id;
+  delete obj.id;
+  console.log(obj);
+  return knex("passwords").where({id}).update(obj);
 }
 
 function getPassword(id) {
@@ -27,10 +39,11 @@ function deletePassword(id) {
   console.log("deletePasswords was called");
   return knex("passwords").where("id", id).del();
 }
-function getFirstPassword() {
+function getRandomPassword() {
   return (
     knex("passwords")
-      //.where('blacklist',true)
+      .select()
+      .orderByRaw("RANDOM()")
       .limit(1)
   );
 }
@@ -39,7 +52,8 @@ module.exports = {
   savePasswords,
   getPassword,
   deletePassword,
-  getFirstPassword,
+  getRandomPassword,
+  updatePassword
 };
 
 // knex.schema.dropTable('todos').then(r => console.log(r));
