@@ -1,31 +1,21 @@
 const { ipcRenderer } = require('electron');
 
-const confirm = document.getElementById('confirm');
 const inputPassword = document.getElementById('inputPassword');
-
-
-confirm.addEventListener('click',()=>{
-    console.log('add button');
-    // log('oij');
-    const password = inputPassword.value;
-    ipcRenderer.send('check-master-password',password);
-});
-
+const pingBtn = document.querySelector('#confirm');
+pingBtn.addEventListener('click',confirm);
+function confirm(e){
+    e.preventDefault();
+    ipcRenderer.send('chck-mstr-psswrd',inputPassword.value);
+}
 
 ipcRenderer.on('error',(e, err) => {
     console.log(err);
-    // show error msg
 });
 
-ipcRenderer.on('wrong-master-password',(e, args) => {
-    console.log('wrong master password');
-    log(args)
-
-    // show error msg
+ipcRenderer.on('show-notification',(e, args) => {
+    console.log('show-notification: ', args);
+    ipcRenderer.send("show-notification", {
+        title: "Error!!!",
+        body: args,
+    });
 });
-
-function log(arg) {
-    const r = document.createElement('p')
-    r.innerText = arg
-    document.body.appendChild(r)
-}

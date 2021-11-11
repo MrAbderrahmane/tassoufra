@@ -1,60 +1,49 @@
-const { BrowserWindow, app, ipcMain, Notification, clipboard } = require("electron");
+const electron = require("electron");
+const { BrowserWindow, app, ipcMain, Notification, clipboard } = electron;
+const path = require("path");
 
 const knexHelper = require("./utils/knexhelper");
-const encryptoHelper = require("./utils/cryptohelper");
 const cryptohelper = require("./utils/cryptohelper");
+const { MainWindow, AddPasswordWindow, MasterPasswordWindow } = require("./utils/windows");
 
-let mainWindow, addPasswordWindow, masterPasswordWindow;
+let allWindows = {};
+
+require('dotenv').config();
+
+if (process.env.NODE_ENV === "development") {
+  require("electron-reload")(__dirname, {
+    electron: __dirname + "/node_modules/.bin/electron",
+    hardResetMethod: "exit",
+    ignored: /node_modules|[\/\\]\.|db.sqlite3/
+  });
+}
 
 function createWindow() {
   // main window
-  mainWindow = new BrowserWindow({
-    show: false,
-    webPreferences: {
-      nodeIntegration: true,
-    },
-    icon: "./assets/images/icon.png",
-  });
-  mainWindow.loadFile("./src/index.html");
-  mainWindow.on("ready-to-show", () => {
-    mainWindow.show();
-  });
-  mainWindow.webContents.openDevTools();
+  allWindows.mainWindow = new MainWindow(path.join(__dirname,"src/index.html"),path.join(__dirname,"assets/images/icon.png"));
+  if (process.env.NODE_ENV === "development")
+    allWindows.mainWindow.webContents.openDevTools();
+}
 
+function createAddPasswordWindow() {
   // add password window
-  addPasswordWindow = new BrowserWindow({
-    width: 400,
-    height: 400,
-    show: false,
-    parent: mainWindow,
-    modal: true,
-    frame: false,
-    webPreferences: {
-      nodeIntegration: true,
-    },
+  allWindows.addPasswordWindow = new AddPasswordWindow(path.join(__dirname,"./src/passwords/addpassword.html"),allWindows.mainWindow)
+  allWindows.addPasswordWindow.once("close", () => {
+    allWindows.addPasswordWindow = undefined;
   });
+  if (process.env.NODE_ENV === "development")
+    allWindows.addPasswordWindow.webContents.openDevTools();
+}
 
-  addPasswordWindow.loadFile("./src/passwords/addpassword.html");
-  // addPasswordWindow.on('close', ()=>{masterPasswordWindow = null});
-  addPasswordWindow.webContents.openDevTools();
-
+function createMasterPasswordWindow() {
   // master password window
-  masterPasswordWindow = new BrowserWindow({
-    width: 400,
-    height: 400,
-    show: false,
-    parent: mainWindow,
-    modal: true,
-    frame: false,
-    webPreferences: {
-      nodeIntegration: true,
-      
-    },
+  allWindows.masterPasswordWindow = 
+    new MasterPasswordWindow(path.join(__dirname,"./src/masterpasswords/masterpassword.html"),allWindows.mainWindow)
+  allWindows.masterPasswordWindow.once("close", () => {
+    allWindows.masterPasswordWindow = undefined;
   });
-
-  masterPasswordWindow.loadFile("./src/masterpasswords/masterpassword.html");
-  // masterPasswordWindow.on('close', ()=>{masterPasswordWindow = null});
-  masterPasswordWindow.webContents.openDevTools();
+  if (process.env.NODE_ENV === "development")
+    allWindows.masterPasswordWindow.webContents.openDevTools();
 }
 
 app.whenReady().then(createWindow);
@@ -71,78 +60,36 @@ app.on("activate", () => {
   }
 });
 
-ipcMain.on("get-all-passwords", (e) => {
-  // console.log('get-all-password from main');
-  knexHelper
-    .getAllPasswords()
-    .then((res) => {
-      // console.log(res)
-      e.sender.send("all-passwords-result", { result: 1, args: res });
-    })
-    .catch((err) => {
-      e.sender.send("all-passwords-result", {
-        result: 0,
-        args: "Can not get data!!!",
-      });
-    });
+function showAddPasswordForm() {
+  createAddPasswordWindow();
+  allWindows.addPasswordWindow.once("ready-to-show", () => {
+    allWindows.addPasswordWindow.show();
+  });
+}
+
+/*
+==================================================================
+== MainWindow ipc handlers                                      ==
+==================================================================
+*/
+
+ipcMain.on("copy-to-clipboard",(e,args)=>{
+  clipboard.writeText(args);
 });
 
-ipcMain.on("show-add-password-dialog", () => {
-  addPasswordWindow.show();
-});
-
-ipcMain.on("save-password", (e, args) => {
-  // console.log('saving password');
-  const obj = { website: args.website,username:args.username };
-  try{
-    obj.hashedpassword = encryptoHelper.encrypt(args.password);
-  } catch(err) {
-    console.error(err);
-    mainWindow.webContents.send('save-password-result',{result:0,args:'Error encription'})
-    return 
+ipcMain.handle("show-password", (e, args) => {
+  console.log(args);
+  let p;
+  try {
+    p = cryptohelper.decrypt(args);
+  } catch (e) {
+    p = null;
+  } finally {
+    return {
+      result: p ? 1 : 0,
+      args: p ? p : "Decryption error!!!",
+    }
   }
-  knexHelper
-    .savePasswords({ ...obj })
-    .then((res) => {
-      console.log("save password res from db", res);
-      return knexHelper.getPassword(res[0]);
-    })
-    .then((newP) => {
-      console.log(newP);
-      mainWindow.webContents.send("save-password-result", {
-        result: 1,
-        args: newP[0],
-      });
-    })
-    .catch((err) => {
-      console.log(err)
-      mainWindow.webContents.send("save-password-result", {
-        result: 0,
-        args: "Can not save data!!!",
-      });
-    });
-  addPasswordWindow.hide();
-});
-
-ipcMain.on("delete-password", (e, args) => {
-  knexHelper
-    .deletePassword(args)
-    .then((res) => {
-      if (res === 1) {
-        e.sender.send("delete-password-result", { result: 1, args });
-      } else {
-        e.sender.send("delete-password-result", {
-          result: 0,
-          args: "No result",
-        });
-      }
-    })
-    .catch((err) => {
-      e.sender.send("delete-password-result", {
-        result: 0,
-        args: "There was an error!!!",
-      });
-    });
 });
 
 ipcMain.on("show-notification", (e, args) => {
@@ -153,52 +100,127 @@ ipcMain.on("show-notification", (e, args) => {
   }).show();
 });
 
-ipcMain.on('show-password', (e, args) => {
-  console.log(args);
-  let p;
-  try{
-   p = encryptoHelper.decrypt(args);
-  } catch(e) {
-    p = null;
-  }
-  e.sender.send('showed-password',{
-    result: p? 1:0,
-    args: p? p:'Decryption error!!!'
-  });
-})
-
-ipcMain.on('copy-to-clipboard', (e, args) => {
-  clipboard.writeText(args);
-});
-
-ipcMain.on('show-master-password-dialog', (e, args) => {
-  if(!encryptoHelper.getEncryptionPassword()){
-    masterPasswordWindow.show()
-  }
-});
-
-ipcMain.on('check-master-password', (e, password) => {
-  knexHelper.getFirstPassword().then(res => {
-    if(res.length > 0){
-      try {
-        encryptoHelper.setEncryptionPassword(encryptoHelper.hash(password))
-        cryptohelper.decrypt(res[0].hashedpassword);
-        masterPasswordWindow.hide();
-        mainWindow.webContents.send('master-password-set')
-  
-      } catch (error) {
-        e.sender.send('wrong-master-password');
-        // masterPasswordWindow.webContents.send('wrong-master-password')
-        console.log(error);
-      }
-    } else {
-      encryptoHelper.setEncryptionPassword(encryptoHelper.hash(password));
-      masterPasswordWindow.hide();
-      mainWindow.webContents.send('master-password-set')
+ipcMain.handle("delete-password", async (e, args) => {
+  let res;
+  try {
+    res = await knexHelper.deletePassword(args);
+  } catch (error) {
+    res = null;
+  } finally {
+    return {
+      result: res? 1:0,
+      args: res===1?  args: res !== null? "no result" : "There was an error!!!"
     }
-  }).catch(err => {
-    e.sender.send('error',err);
-    // masterPasswordWindow.webContents.send('error',err);
-    console.log(error);
-  })
-})
+  }
+});
+
+ipcMain.handle("get-all-passwords", async (e) => {
+  let results;
+  try {
+    results = { result: 1, args: await knexHelper.getAllPasswords()}
+  } catch (error) {
+    results = { result: 0, args: "Can not get data!!!"}
+  } finally {
+    return results;
+  }
+});
+
+
+/*
+==================================================================
+== MasterPassordWindow ipc handlers                             ==
+==================================================================
+*/
+
+ipcMain.on("show-master-password-dialog", e => {
+  if (!cryptohelper.getEncryptionPassword()) {
+    createMasterPasswordWindow();
+    allWindows.masterPasswordWindow.on("ready-to-show", () => {
+      allWindows.masterPasswordWindow.show();
+    });
+  } else {
+    allWindows.mainWindow.webContents.send("master-password-set");
+  }
+});
+
+ipcMain.on("chck-mstr-psswrd", async (e, password) => {
+  try{
+    const res = await knexHelper.getRandomPassword();
+    if (res.length > 0) {
+      cryptohelper.setEncryptionPassword(cryptohelper.hash(password));
+      cryptohelper.decrypt(res[0].hashedpassword);
+      allWindows.mainWindow.webContents.send("master-password-set");
+      allWindows.masterPasswordWindow.close();
+    } else {
+      cryptohelper.setEncryptionPassword(cryptohelper.hash(password));
+      allWindows.mainWindow.webContents.send("master-password-set");
+      allWindows.masterPasswordWindow.close();
+    }
+  } catch(err) {
+    e.reply("show-notification", "There was an error!!!");
+  }
+});
+
+/*
+==================================================================
+== AddPasswordHandler ipc handlers                             ==
+==================================================================
+*/
+
+ipcMain.on("show-add-password-dialog", () => {
+  showAddPasswordForm();
+});
+
+ipcMain.on("save-password", async (e, args) => {
+  let newP;
+  try{
+    const obj = { website: args.website, username: args.username };
+    obj.hashedpassword = cryptohelper.encrypt(args.password);
+    const res = await knexHelper.savePasswords({ ...obj });
+    newP = await knexHelper.getPassword(res[0]);
+  } catch(err) {
+    newP = null;
+  } finally {
+    allWindows.mainWindow.webContents.send("save-password-result", {
+      result: newP? 1:0,
+      args: newP? newP[0] : "Can not save data!!!",
+    });
+    allWindows.addPasswordWindow.close();
+  }
+});
+
+ipcMain.on("edit-password", async (e, args) => {
+  let res;
+  try {
+    res = await knexHelper.getPassword(args);
+  } catch (error) {
+    res = null;
+  } finally {
+    if (res && res.length === 1) {
+      showAddPasswordForm();
+      allWindows.addPasswordWindow.password = res[0];
+    } else {
+      allWindows.mainWindow.webContents.send("show-notification", "There was an error!!!");
+    }
+  }
+});
+
+ipcMain.on("update-password", async (e, args) => {
+  let res;
+  try{
+    if (args.password) {
+      args.hashedpassword = cryptohelper.encrypt(args.password);
+      delete args.password;
+    }
+    res = await knexHelper.updatePassword(args);
+  } catch(err) {
+    res = null;
+  } finally {
+    if (res === 1) {
+      allWindows.mainWindow.webContents.send("rerender");
+    } else {
+      allWindows.mainWindow.webContents.send("show-notification", "There was an error!!!");
+    }
+    allWindows.addPasswordWindow.close();
+  }
+});

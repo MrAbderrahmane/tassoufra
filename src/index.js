@@ -2,22 +2,36 @@ const { ipcRenderer } = require("electron");
 const tableBody = document.getElementById("tableBody");
 const table = document.getElementById("mainTable");
 const btnAdd = document.getElementById("btnAdd");
+const filterInput = document.querySelector('#filterInput');
 let waitingForRawPassword = null;
 const showDuration = 5000;
 
 document.addEventListener("DOMContentLoaded", function () {
   ipcRenderer.send("show-master-password-dialog");
 });
-ipcRenderer.on("master-password-set",(e, args)=>{
-  ipcRenderer.send("get-all-passwords");
+
+filterInput.addEventListener("keyup", filter);
+
+ipcRenderer.on("master-password-set",async (e, args)=>{
+  const res = await ipcRenderer.invoke("get-all-passwords");
+  renderAllPasswords(res);
+})
+
+ipcRenderer.on("rerender", async (e, arg)=>{
+  while (tableBody.firstChild) {
+    tableBody.removeChild(tableBody.lastChild);
+  }
+  const res = await ipcRenderer.invoke("get-all-passwords");
+  renderAllPasswords(res);
 })
 
 btnAdd.addEventListener("click", () => {
   ipcRenderer.send("show-add-password-dialog");
 });
 
-ipcRenderer.on("all-passwords-result", (e, args) => {
-  console.log(args, typeof args);
+// ipcRenderer.on("all-passwords-result", (e, args) => {
+function renderAllPasswords(args) {
+  // console.log(args, typeof args);
   if (args.result === 1) {
     renderPasswordsResult(args.args);
   } else {
@@ -26,7 +40,7 @@ ipcRenderer.on("all-passwords-result", (e, args) => {
       body: args.args,
     });
   }
-});
+};
 
 const passwordBullets = "\u2022\u2022\u2022\u2022\u2022\u2022";
 function renderPasswordsResult(args) {
@@ -40,17 +54,13 @@ function renderPasswordsResult(args) {
     const bPC = document.createElement("button");
     const tdB = document.createElement("td");
     const b = document.createElement("button");
-    const icon = document.createElement("img");
-    icon.src = "../assets/images/visibility.svg";
-    icon.style.width = "17px";
-    bP.appendChild(icon);
+    const bEdit = document.createElement("button");
+    bP.textContent = "Show";
+    bP.classList.add('with-icon',"eye");
     bP.setAttribute("onClick", "showPassword(this)");
 
-    const iconCopy = document.createElement("img");
-    iconCopy.src = "../assets/images/clipboard.svg";
-    iconCopy.style.width = "17px";
-
-    bPC.appendChild(iconCopy);
+    bPC.classList.add('with-icon',"copy");
+    bPC.textContent = "Copy"
     bPC.setAttribute("onClick", "copyPassword(this)");
     bPC.style.display = "none";
 
@@ -62,9 +72,15 @@ function renderPasswordsResult(args) {
     tdP.appendChild(bP);
     tdP.appendChild(bPC);
     b.innerText = "Delete";
-
-    b.setAttribute("onClick", "deleteRow(this)");
+    b.classList.add('with-icon','trash');
+    b.setAttribute("onClick", "deleteRow(event)");
+    // b.setAttribute("type","button");
     tdB.appendChild(b);
+
+    bEdit.innerText = "Edit";
+    bEdit.classList.add('with-icon','edit');
+    bEdit.setAttribute("onClick", "editRow(this)");
+    tdB.appendChild(bEdit);
 
     tr.appendChild(tdI);
     tr.appendChild(tdW);
@@ -93,18 +109,33 @@ ipcRenderer.on("save-password-result", (e, args) => {
   }
 });
 
-function deleteRow(btn) {
-  console.log(btn);
-
+async function deleteRow(e) {
+  const btn = e.currentTarget;
+  // e.preventDefault();
+  // e.stopPropagation();
   const id = btn.parentNode.parentNode.firstElementChild.innerText;
-  ipcRenderer.send("delete-password", id);
+  // const res = await 
+  ipcRenderer.invoke("delete-password", id).then(res => {
+    console.log(res)
+    deletePasswordHandler({result:1,args:id});
+  });
+  console.log('delete row')
+  // deletePasswordHandler(res);
+  // deletePasswordHandler({result:1,args:id});
+  // return false;
 }
 
-function showPassword(btn) {
+function editRow(btn) {
+  const id = btn.parentNode.parentNode.firstElementChild.innerText;
+  ipcRenderer.send("edit-password", id);
+}
+
+async function showPassword(btn) {
   if (waitingForRawPassword === null) {
     const hashedPassword = btn.parentNode.hashedpassword;
-    ipcRenderer.send("show-password", hashedPassword);
     waitingForRawPassword = btn.parentNode;
+    const arg = await ipcRenderer.invoke("show-password", hashedPassword);
+    showPasswordHandler(arg);
   }
 }
 function copyPassword(btn){
@@ -118,7 +149,8 @@ function copyPassword(btn){
   }
 }
 
-ipcRenderer.on("showed-password", (e, args) => {
+/// ipcRenderer.on("showed-password", (e, args) => {
+function showPasswordHandler(args) {
   if (waitingForRawPassword && args && args.result === 1) {
     const [btn,btnCopy] = waitingForRawPassword.querySelectorAll("button");
     btn && (btn.style.display = "none");
@@ -144,9 +176,10 @@ ipcRenderer.on("showed-password", (e, args) => {
   } else {
     // ! todo
   }
-});
+}
 
-ipcRenderer.on("delete-password-result", (e, args) => {
+// ipcRenderer.on("delete-password-result", (e, args) => {
+function deletePasswordHandler(args){
   console.log(args, typeof args);
   if (args.result === 1) {
     deletePasswordItem(args.args);
@@ -156,7 +189,7 @@ ipcRenderer.on("delete-password-result", (e, args) => {
       body: args.args,
     });
   }
-});
+};
 
 function deletePasswordItem(params) {
   for (let i = 0; i < tableBody.rows.length; i++) {
@@ -169,4 +202,36 @@ function deletePasswordItem(params) {
       break;
     }
   }
+}
+
+ipcRenderer.on('test',console.log);
+
+ipcRenderer.on('test-child',(e,args)=>{
+  console.log(args);
+  e.sender.send('test-child', 'received msg');
+});
+
+function filter(e){
+  console.log(e);
+  const value = e.target.value;
+  console.log(value);
+  search(value);
+}
+
+function search(value){
+  tableBody.childNodes.forEach(node => {
+    if(node.nodeName === "TR"){
+      let found = false;
+      for(let i = 0; i<node.childNodes.length -1; i++){
+        const currentNode = node.childNodes[i];
+        if (i>2) break;
+        if(currentNode.textContent.includes(value)) {
+          found = true;
+          break;
+        };
+      }
+      if(!found) node.style.display = 'none';
+      else node.style.display = 'table-row';
+    }
+  });
 }

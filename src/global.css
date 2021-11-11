@@ -1,0 +1,37 @@
+:root {
+  --red: rgb(221, 216, 216);
+}
+
+button {
+  line-height: 18px;
+  background-color: var(--red);
+}
+
+button.with-icon::before {
+  content: "";
+  display: inline-block;
+  width: 17px;
+  height: 17px;
+  margin-right: 3px;
+  margin-bottom: -3px;
+}
+
+button.trash::before {
+  background-image: url("../assets/images/trash.svg");
+}
+
+button.copy::before {
+  background-image: url("../assets/images/clipboard.svg");
+}
+
+button.edit::before {
+  background-image: url("../assets/images/pencil-sharp.svg");
+}
+
+button.eye::before {
+  background-image: url("../assets/images/visibility.svg");
+}
+
+button.add::before {
+  background-image: url("../assets/images/add-circle.svg");
+}

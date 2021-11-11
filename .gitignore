@@ -1,5 +1,6 @@
-/node_modules
-
+node_modules
 todo.txt
-
-/.vscode
+.vscode
+.env
+package-lock.json
+db.sqlite3
